@@ -17,6 +17,8 @@ router.register(r'users', views.UserViewset,basename='user')
 
 urlpatterns = [
     path('user/', include(router.urls)),
+    path('product/<int:pk>/',views.ProductDetail.as_view(),name='product'),
+    url(r'^product/',views.product,name='product'),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

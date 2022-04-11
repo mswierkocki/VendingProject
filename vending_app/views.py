@@ -5,11 +5,16 @@ from django.core.validators import ValidationError
 from django.http import Http404,HttpResponse
 
 from rest_framework import viewsets,status
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission, IsAuthenticated, SAFE_METHODS,AllowAny
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import VendingUser,Product, VALID_COINS
-from .serializers import VendingUserSerializer,CreateVendingUserSerializer
+from .serializers import VendingUserSerializer,CreateVendingUserSerializer,ProductSerializer,OrderSerializer
+
+ALLOW_CHANGE_DEPOSIT = getattr(settings, "ALLOW_CHANGE_DEPOSIT", False)
+
 
 # Permissions:
 
@@ -113,3 +118,104 @@ class UserViewset(viewsets.ModelViewSet):
         except Http404:
             pass
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+class ProductDetail(APIView):
+    """
+    Retrieve, update or delete a Product instance.
+    """
+    permission_classes = [IsAuthenticated|AllowGET]
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    allowed_methods = ['put','get','delete']
+    def get_object(self, pk):
+        try:
+            return Product.objects.get(pk=pk)
+        except Product.DoesNotExist:
+            raise Http404
+    
+    @classmethod
+    def check_owner(cls,request,product):
+        if product.sellerId.user.pk is not request.user.pk:
+                return False, Response({"message":"You are not the owner"},status=status.HTTP_403_FORBIDDEN)
+        return True, None
+    
+    def get(self, request, pk, format=None):
+        product = self.get_object(pk)
+        serializer = ProductSerializer(product)
+        return Response(serializer.data)
+
+    def put(self, request, pk, partial=False, format=None):
+        product = self.get_object(pk)
+        #checking wheter we are owner user by User id
+        is_owner, ret = ProductDetail.check_owner(request,product)
+        if not is_owner:
+            return ret
+        data=request.data
+        #Allow Product ownership transfer
+        data["sellerId"]=int(request.data.get('sellerId')) if "sellerId" in request.data.keys() else product.sellerId.pk
+            
+        serializer = ProductSerializer(product, data=request.data,partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data,status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def patch(self, request, pk, format=None):
+        return self.put(request,pk,True,format)
+    def delete(self, request, pk, format=None):
+        product = self.get_object(pk)
+        is_owner, ret = ProductDetail.check_owner(request,product)
+        if not is_owner:
+            return ret
+        product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+       
+@api_view(['GET','POST'])
+@permission_classes([AllowAny])
+def product(request):
+    """ 
+    Get all products
+
+    get: List all products.
+    post: Create a new product.
+
+    """
+    # get all products
+    if request.method == 'GET':
+        try:
+            products = Product.objects.all()
+            serializer = ProductSerializer(products, many=True)
+            return Response(serializer.data)
+        except Product.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+    # Create new        
+    elif request.method == 'POST':
+        if not request.user or request.user.is_anonymous:
+            return Response({"message":
+                            "Unautorized"},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        if not hasattr(request.user, 'vendinguser'):
+            return Response({"message":
+                            "User {} is not VendingUser".format(request.user.username)},
+                            status=status.HTTP_403_FORBIDDEN)
+        vuser = request.user.vendinguser
+        if not vuser.is_seller():
+            return Response({"message":
+                            "User {} is not seller".format(vuser.user.username)},
+                            status=status.HTTP_406_NOT_ACCEPTABLE)
+        try:
+            data = {
+                'ammountAvailable': request.data.get('ammountAvailable'),
+                'cost': int(request.data.get('cost')),
+                'productName': request.data.get('productName'),
+                'sellerId': vuser.pk,
+            }
+            serializer = ProductSerializer(data=data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"description":"Bad data or content type, expected JSON with 'ammountAvailable','cost','productName'"},status=status.HTTP_400_BAD_REQUEST)    
+
+    return Response({}, status=status.HTTP_400_BAD_REQUEST)
