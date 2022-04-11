@@ -39,10 +39,10 @@ jobs:
       python manage.py test
   - name: Setup Production
     run: |
-      sed  -i 's/.*DEBUG.*/DEBUG=False/g' VendingProject/settings.py
+      sed  -i 's/.*DEBUG.*/DEBUG=False/g' VendingMachine/settings.py
       sed  -i 's/.*ALLOWED_HOSTS.*/ALLOWED_HOSTS = ["vendingmachine0.herokuapp.com"]/g' VendingMachine/settings.py
       echo "" >> VendingMachine/settings.py
-      echo "import dj_database_url" >> VendingProject/settings.py
+      echo "import dj_database_url" >> VendingMachine/settings.py
       echo "DATABASES['default'] = dj_database_url.config(conn_max_age=600, ssl_require=True)" >> VendingMachine/settings.py
 
   - uses: akhileshns/heroku-deploy@v3.12.12 # This is the action
