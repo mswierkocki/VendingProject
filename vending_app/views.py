@@ -10,7 +10,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated, SAFE_MET
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import VendingUser,Product, VALID_COINS
+from .models import VendingUser,Product, VALID_COINS,VALID_COINS_STR
 from .serializers import VendingUserSerializer,CreateVendingUserSerializer,ProductSerializer,OrderSerializer
 
 ALLOW_CHANGE_DEPOSIT = getattr(settings, "ALLOW_CHANGE_DEPOSIT", False)
@@ -219,3 +219,86 @@ def product(request):
             return Response({"description":"Bad data or content type, expected JSON with 'ammountAvailable','cost','productName'"},status=status.HTTP_400_BAD_REQUEST)    
 
     return Response({}, status=status.HTTP_400_BAD_REQUEST)
+@api_view(['GET', 'POST'])
+@permission_classes([AllowBUYER])
+def deposit(request):
+    coin = request.data.get("coin")
+    if coin is None: # check in querry data
+        coin = request.query_params.get('coin')
+        if coin is None:
+            return Response({"description":"Could not find coin in data"}, status=status.HTTP_400_BAD_REQUEST)            
+    try:
+        if isinstance(coin,str):
+            if coin in VALID_COINS_STR:    
+                coin = int(coin) # change it to int, it should no throw, because VALID tab contains int's
+        if isinstance(coin,int):
+            if coin not in VALID_COINS:
+                raise Exception("Invalid Coin")
+            #since we know here our user is buyer and coin is in int format:
+            vuser = request.user.vendinguser
+            with transaction.atomic():
+                usr = VendingUser.objects.select_for_update().get(pk=vuser.pk)
+                usr.add_coin(coin,force_save=False)
+                usr.save()
+    except Exception as e:
+        return Response({"description":str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({}, status=status.HTTP_204_NO_CONTENT)
+@api_view(['GET', 'POST'])
+@permission_classes([AllowBUYER])
+def reset(request):
+    vuser = request.user.vendinguser
+    with transaction.atomic():
+        usr = VendingUser.objects.select_for_update().get(pk=vuser.pk)
+        usr.reset_deposit()
+        usr.save()
+    # we must take user from db id order to get current values.    
+    serializer = VendingUserSerializer(VendingUser.objects.get(pk=vuser.pk))
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowBUYER])
+def buy(request):
+    data = request.data
+    if data is None: # check for query params
+        data = request.query_params
+    serializer = OrderSerializer(data=data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    #check avaiable
+    productID = serializer.data['productID']
+    product = Product.objects.filter(pk=productID).first()
+    if product is None:
+        return Response({"message":"Invalid product id!"}, status=status.HTTP_400_BAD_REQUEST)
+    quantity = serializer.data['quantity']
+    if product.ammountAvailable < quantity:
+        return Response({"message":"Insufficient product quantity!"}, status=status.HTTP_400_BAD_REQUEST)
+    #for currency we should using specialized class with fixed decimal places, however we use here simple ints
+    order_cost = product.cost * quantity
+    #since cost is assured to be divisable buy 5's so order cos is also
+    assert order_cost % VALID_COINS[0] == 0
+    #quick check if buyer has funds
+    funds = request.user.vendinguser.total_deposit()
+    if funds<order_cost:
+        return Response({"message":"Insufficient funds!"}, status=status.HTTP_400_BAD_REQUEST)
+    new_deposit = request.user.vendinguser.deposit[:]
+    if pay(new_deposit,order_cost) != 0:
+        return Response({"message":"Insufficient funds!"}, status=status.HTTP_400_BAD_REQUEST)
+    #since product is avaiable and user has funds we may now perform buy operation
+    try:
+      with transaction.atomic():
+        usr = VendingUser.objects.select_for_update().get(pk=request.user.vendinguser.pk)
+        #check deposit is same here, if not rise
+        #we update daposit table only if it has not change sice beggining of this request
+        prod = Product.objects.select_for_update().get(pk=productID)
+        if prod.ammountAvailable != product.ammountAvailable:
+            raise IntegrityError("Ammount has changed")
+        if usr.deposit != request.user.vendinguser.deposit:
+            raise IntegrityError("deposit has changed")
+        usr.deposit = new_deposit
+        usr.save()
+        prod.ammountAvailable -= quantity
+        prod.save()
+    except Exception as e:
+        return Response({},status=status.HTTP_412_PRECONDITION_FAILED)    
+    return Response({'total':order_cost,'change':new_deposit})
+
