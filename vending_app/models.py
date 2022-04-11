@@ -2,7 +2,11 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinLengthValidator
 from django.core.exceptions import ValidationError
-
+#For signal handle
+from django.contrib.auth.signals import user_logged_in
+from django.contrib import messages
+from django.utils.safestring import mark_safe
+from django.contrib.sessions.models import Session
 """ 
 Handy variables
 # Important! #
@@ -201,3 +205,18 @@ class VendingUser(models.Model):
         vending_user.save()
         
         return vending_user 
+
+## Bonus
+def notify_active_sessions(sender, user, request, **kwargs):
+    found = False
+    suser = str(user.id)
+    if user.is_authenticated:
+        for s in Session.objects.all():
+            deco =s.get_decoded()
+            if deco.get('_auth_user_id') == suser: 
+                found = True
+    if found:
+        messages.add_message(request, messages.WARNING, "There is already an active session using your account")
+        messages.add_message(request, messages.INFO, mark_safe("Please use <a href='/logout/all/'>/logout/all/</a> to loug out from all sessions"))
+
+user_logged_in.connect(notify_active_sessions,dispatch_uid="Login_notify_active_sessions")
