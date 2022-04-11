@@ -1,7 +1,8 @@
-from django.contrib.auth.models import User
 from django.db import transaction, IntegrityError
 from django.conf import settings
 from django.core.validators import ValidationError
+from django.contrib.auth.models import User
+from django.contrib.sessions.models import Sessios
 from django.http import Http404,HttpResponse
 
 from rest_framework import viewsets,status
@@ -303,3 +304,24 @@ def buy(request):
         return Response({},status=status.HTTP_412_PRECONDITION_FAILED)    
     return Response({'total':order_cost,'change':new_deposit})
 
+def logout_all(request):
+# grab the user in question 
+    #user = User.objects.get(username='johndoe')
+    html = '<html><body>{"message":"User is not logged in"}</body></html>'
+    user = request.user
+    found = False
+    if user.is_authenticated:
+        for s in Session.objects.all():
+            deco =s.get_decoded()
+            if deco.get('_auth_user_id') == str(user.id): 
+                found = True
+                s.delete()
+    else:
+        return HttpResponse(html)
+        # [s.delete() for s in Session.objects.all() if s.get_decoded().get('_auth_user_id') == user.id] 
+    if found:
+       html = '<html><body>{"message":"Logout all succesfull!"}</body></html>' 
+    else:
+        html = '<html><body>{"message":"Could not find session"}</body></html>' 
+        
+    return HttpResponse(html)
