@@ -13,6 +13,7 @@ As we are with users, lets take look at them.
 - What about products, that were added by seller, who gets removed ? Will they dangle? Should they be removed ? Can be edited, if yes, by who ?
 - Does anyone should be able to register himself as seller or buyer ? Or it should be handled in special way ?
 - Should deposit of a new registered buyer be 0, or should we allow to set it ?
+- Should deposit or role be modifiable by Update action?
 - What should we allow to edit during update user ?
 
 More questions

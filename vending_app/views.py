@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from .models import VendingUser,Product, VALID_COINS,VALID_COINS_STR
 from .serializers import VendingUserSerializer,CreateVendingUserSerializer,ProductSerializer,OrderSerializer
+from .coins import pay,aquire
 
 ALLOW_CHANGE_DEPOSIT = getattr(settings, "ALLOW_CHANGE_DEPOSIT", False)
 
