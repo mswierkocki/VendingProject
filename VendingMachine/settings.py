@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'vending_app',
 ]
 
 MIDDLEWARE = [
@@ -134,4 +135,5 @@ REST_FRAMEWORK = {
            'rest_framework.renderers.JSONRenderer',
     ],
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+    
 }
