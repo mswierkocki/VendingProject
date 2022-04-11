@@ -2,7 +2,7 @@ from django.db import transaction, IntegrityError
 from django.conf import settings
 from django.core.validators import ValidationError
 from django.contrib.auth.models import User
-from django.contrib.sessions.models import Sessios
+from django.contrib.sessions.models import Session
 from django.http import Http404,HttpResponse
 
 from rest_framework import viewsets,status
